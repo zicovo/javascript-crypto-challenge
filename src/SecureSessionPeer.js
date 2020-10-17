@@ -1,120 +1,77 @@
 const nacl = require('libsodium-wrappers');
+const Decryptor = require('./Decryptor.js')
+const Encryptor = require('./Encryptor.js')
 
 module.exports = async (peer) => {
 
 await nacl.ready;
 
+let otherPeer = peer;
 
-class SecureSession {
+let encryptor, decryptor, rx, tx;
 
+let keyPair = nacl.crypto_kx_keypair()
 
-constructor(peer){
+let [pk, sk] = [keyPair.publicKey, keyPair.privateKey]
 
-    let keyPair = nacl.crypto_kx_keypair()
-    let [pk, sk] = [keyPair.publicKey, keyPair.privateKey]
-    this.publicKey = pk
-    this.secretKey = sk
-    if(peer){
-        this.type = "SERVER";
-        let sharedKeys = nacl.crypto_kx_server_session_keys(this.publicKey, this.secretKey, peer.publicKey)
+global.message;
+
+let peerInstance = {
+
+    publicKey: pk,
+
+    encrypt: (message) => {
+        return encryptor.encrypt(message)
+    },
+
+    decrypt: (ciphertext, nonce) => {
+        return decryptor.decrypt(ciphertext, nonce)
+    }, 
+
+    send: (msg) => {
         
-        let [rx, tx] = [sharedKeys.sharedRx, sharedKeys.sharedTx];
+        message = encryptor.encrypt(msg);
+        console.log(message)
+    },
 
-        this.serverRx = rx;
-        this.serverTx = tx;
-
-      }
-    
-    else{
-        this.type = "CLIENT";
-    }
-}
-
-
-encrypt(msg){
-
-    let Nonce = nacl.randombytes_buf(nacl.crypto_secretbox_NONCEBYTES);
-
-    let Ciphertext = nacl.crypto_box_easy(msg, Nonce, this.publicKey, this.secretKey);
-
-    return {
-        nonce: Nonce,
-        ciphertext: Ciphertext
-    }
-
+    receive: () => {
+        console.log(message)
+        return decryptor.decrypt(message.ciphertext, message.nonce)
         
-}
+    },
 
-decrypt(peerCiphertext, peerNonce){
+    instantiateDecryptor: async (rx) => {
+        decryptor = await Decryptor(rx)
+        return decryptor;
+    },
 
-    return nacl.crypto_box_open_easy(peerCiphertext, peerNonce, peer.publicKey, peer.secretKey);
- 
-}
+    instantiateEncryptor: async (tx, nonce) => {
+        encryptor = await Encryptor(tx, nonce)
+        return encryptor
+    },
 
-send(peerMsg){
-
-      if(this.type == "CLIENT"){
-
-        let nonce = nacl.randombytes_buf(nacl.crypto_secretbox_NONCEBYTES);
-
-        //create shared keypair for the client
-
-        let sharedKeys = nacl.crypto_kx_client_session_keys(this.publicKey, this.secretKey, server.publicKey)
-        
-        let [rx, tx] = [sharedKeys.sharedRx, sharedKeys.sharedTx];
-
-        let ciphertext = nacl.crypto_secretbox_easy(peerMsg, nonce, tx);
-
-        global.clientMessage = {
-            nonce: nonce,
-            ciphertext: ciphertext, 
-            rx: rx,
-            tx: tx
-        }
-
-
-      }
-
-      else {
-        let nonce = nacl.randombytes_buf(nacl.crypto_secretbox_NONCEBYTES);
-
-        let ciphertext = nacl.crypto_secretbox_easy(peerMsg, nonce, this.serverTx);
-
-        global.serverMessage = {
-            nonce: nonce,
-            ciphertext: ciphertext, 
-        }
-      }
-
-}
-
-receive(){
-
-
-    if(this.type == "CLIENT"){
-        return nacl.crypto_secretbox_open_easy(serverMessage.ciphertext, serverMessage.nonce, clientMessage.rx)
+    generateSharedKeys: async (otherPeer) => {
+        let clientKeyPair = nacl.crypto_kx_client_session_keys(pk, sk, otherPeer.publicKey)
+        rx = clientKeyPair.sharedRx
+        tx = clientKeyPair.sharedTx
+        decryptor = await peerInstance.instantiateDecryptor(rx)
+        encryptor = await peerInstance.instantiateEncryptor(tx)
     }
-    else{
-        return nacl.crypto_secretbox_open_easy(clientMessage.ciphertext, clientMessage.nonce, this.serverRx)
-    }
+}
 
+Object.freeze(peerInstance)
 
+if(otherPeer !== undefined){
+    let serverKeyPair = nacl.crypto_kx_server_session_keys(pk, sk, otherPeer.publicKey)
+    rx = serverKeyPair.sharedRx;
+    tx = serverKeyPair.sharedTx;
+
+    otherPeer.generateSharedKeys(peerInstance);
+    decryptor = await peerInstance.instantiateDecryptor(rx)
+    encryptor = await peerInstance.instantiateEncryptor(tx)
 }
 
 
-}
-
-
-if(!peer){
-
-    global.client = new SecureSession();
-    return Object.freeze(client);
-}
-    
-else{
- 
-    global.server = new SecureSession(peer);
-    return Object.freeze(server);
-}
+return peerInstance;
 
 }

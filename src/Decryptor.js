@@ -13,7 +13,7 @@ module.exports = async (key) => {
         Key: key,
         decrypt: (ciphertext, nonce) => {
             
-           return nacl.crypto_secretbox_open_easy(ciphertext, nonce, key);
+                return nacl.crypto_secretbox_open_easy(ciphertext, nonce, key);
         }
     });
 
