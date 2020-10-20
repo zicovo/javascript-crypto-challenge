@@ -40,22 +40,12 @@ let peerInstance = {
         
     },
 
-    instantiateDecryptor: async (rx) => {
-        decryptor = await Decryptor(rx)
-        return decryptor;
-    },
-
-    instantiateEncryptor: async (tx, nonce) => {
-        encryptor = await Encryptor(tx, nonce)
-        return encryptor
-    },
-
     generateSharedKeys: async (otherPeer) => {
         let clientKeyPair = nacl.crypto_kx_client_session_keys(pk, sk, otherPeer.publicKey)
         rx = clientKeyPair.sharedRx
         tx = clientKeyPair.sharedTx
-        decryptor = await peerInstance.instantiateDecryptor(rx)
-        encryptor = await peerInstance.instantiateEncryptor(tx)
+        decryptor = await Decryptor(rx)
+        encryptor = await Encryptor(tx)
     }
 }
 
@@ -67,8 +57,8 @@ if(otherPeer !== undefined){
     tx = serverKeyPair.sharedTx;
 
     otherPeer.generateSharedKeys(peerInstance);
-    decryptor = await peerInstance.instantiateDecryptor(rx)
-    encryptor = await peerInstance.instantiateEncryptor(tx)
+    decryptor = await Decryptor(rx)
+    encryptor = await Encryptor(tx)
 }
 
 
